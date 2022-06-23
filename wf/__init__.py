@@ -3,7 +3,6 @@ Extract and rename FASTQs from bam files
 """
 import subprocess
 from pathlib import Path
-# import re, difflib, ast, os
 
 from latch import workflow, small_task
 from latch.types import LatchFile
@@ -11,8 +10,7 @@ from latch.types import LatchFile
 @small_task
 def backextract(bam: LatchFile, name: str) -> (LatchFile, LatchFile):
 
-    # A reference to our output.
-    
+    # A reference to our output fastqs, currently hardcoded
     f1 = Path(f"{name}_1.fastq.gz").resolve()
     f2 = Path(f"{name}_2.fastq.gz").resolve()
 
@@ -24,9 +22,6 @@ def backextract(bam: LatchFile, name: str) -> (LatchFile, LatchFile):
         f"F2={str(f2)}"
     ]
 
-    ## are bam files usually from paired-end sample?
-    ## in which domains/industries/are they single/paired-end?
-
     subprocess.run(_b2f_cmd)
     
     return (
@@ -37,6 +32,8 @@ def backextract(bam: LatchFile, name: str) -> (LatchFile, LatchFile):
 @small_task
 def flagstats(bam: LatchFile) -> LatchFile:
 
+    ## generate a txt file containing flagstats
+
     flagstats = Path("flagstat.txt").resolve()
     
     _flagstats_cmd = [
@@ -44,9 +41,7 @@ def flagstats(bam: LatchFile) -> LatchFile:
         "flagstat",
         str(bam.local_path) 
     ]
-    #
-    ## forgot to add the .local_path in an earlier v, 
-    ## maybe a womtool validate thing would be good
+
     with open(flagstats, "w") as f:
         subprocess.call(_flagstats_cmd, stdout=f)
 
@@ -91,4 +86,3 @@ def BamToFastq(bam: LatchFile, name: str = "read") -> (LatchFile, LatchFile):
     flagstats(bam=bam)
     return backextract(bam=bam, name=name)
 
-## keep getting a 'successfully registered, even if not'
