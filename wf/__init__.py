@@ -5,32 +5,47 @@ import subprocess
 from pathlib import Path
 
 from latch import workflow, small_task
-from latch.types import LatchFile
+from latch.types import LatchFile, LatchDir
 
 @small_task
-def backextract(bam: LatchFile, name: str) -> (LatchFile, LatchFile):
+def backextract(bam: LatchFile, name: str, output_dir: LatchDir, paired: bool = True) -> (LatchDir):
 
     # A reference to our output fastqs, currently hardcoded
+    local_dir = Path("/root/fastqs/").resolve()
+
     f1 = Path(f"{name}_1.fastq.gz").resolve()
     f2 = Path(f"{name}_2.fastq.gz").resolve()
+
+    _mkdir_cmd = [
+        "mkdir",
+        "fastqs"
+    ]
+
+    _mv_cmd = [
+        "mv",
+        str(f1),
+        str(local_dir)
+    ]
 
     _b2f_cmd = [
         "PicardCommandLine",
         "SamToFastq",
         f"INPUT={str(bam.local_path)}",
-        f"FASTQ={str(f1)}",
-        f"F2={str(f2)}"
+        f"FASTQ={str(f1)}"
     ]
 
+    if paired:
+        _mv_cmd.insert(2, str(f2))
+        _b2f_cmd.append(f"F2={str(f2)}")
+
+    subprocess.run(_mkdir_cmd)
     subprocess.run(_b2f_cmd)
-    
-    return (
-        LatchFile(str(f1), f"latch:///b2f_outputs/{name}_1.fastq.gz"),
-        LatchFile(str(f2), f"latch:///b2f_outputs/{name}_2.fastq.gz")
-    )    
+    subprocess.run(_mv_cmd)
+
+    return LatchDir(str(local_dir), output_dir.remote_path)
 
 @small_task
-def flagstats(bam: LatchFile) -> LatchFile:
+def flagstats(bam: LatchFile, output_dir: LatchDir) -> LatchFile:
 
     ## generate a txt file containing flagstats
 
@@ -45,10 +60,10 @@ def flagstats(bam: LatchFile) -> LatchFile:
     with open(flagstats, "w") as f:
         subprocess.call(_flagstats_cmd, stdout=f)
 
-    return LatchFile(str(flagstats), "latch:///b2f_outputs/flagstats.txt")
+    return LatchFile(str(flagstats), f"{output_dir.remote_path}/flagstats.txt")
 
 @workflow
-def BamToFastq(bam: LatchFile, name: str = "read") -> (LatchFile, LatchFile):
+def BamToFastq(bam: LatchFile, output_dir: LatchDir, name: str = "read", paired: bool = True):
     """Get reads 1, 2, and metrics from your BAM file.
 
     bamtofastq
@@ -57,6 +72,15 @@ def BamToFastq(bam: LatchFile, name: str = "read") -> (LatchFile, LatchFile):
     bamtofastq uses the picard-tools package (and its SamToFastq function)
     to extract reads 1 and 2 from bam (or sam) files. It will also generate
     flagstat metrics from the bam file.
+
+    ### Usage
+
+    Bam files can contain single or pair-end reads. Upload from your Latch
+    console and select an output file name. The resulting name will be of format:
+
+    ```{name}_1.fastq.gz```
+
+    Select an output folder to capture the ```fastq``` and ```txt``` files. 
 
     __metadata__:
         display_name: bamtofastq
@@ -81,8 +105,21 @@ def BamToFastq(bam: LatchFile, name: str = "read") -> (LatchFile, LatchFile):
 
           __metadata__:
             display_name: Name
+        
+        output_dir:
+          Destination for output files.
+
+          __metadata__:
+            display_name: Output Directory
+
+        paired:
+          Are BAM files from paired-end reads?
+
+          __metadata__:
+            display_name: Paired
+
+
     """
 
-    flagstats(bam=bam)
-    return backextract(bam=bam, name=name)
-
+    flagstats(bam=bam, output_dir=output_dir)
+    return backextract(bam=bam, name=name, output_dir=output_dir, paired=paired)
